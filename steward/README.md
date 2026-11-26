@@ -146,6 +146,36 @@ merged or closed. GitHub keeps them restorable from the PR page. Leave
 branches with an open PR. List branches with no PR at all that are more
 than 14 days old in the summary, but don't delete them.
 
+### 6b. Security scan
+
+Only on a run that took on no work items in steps 4 and 5. Scan at most one
+repo per run.
+
+1. Read `~/.cache/repo-steward/security-scans.json`, which maps each repo to
+   the date of its last scan. Pick the active repo with the oldest scan, if
+   that was more than 30 days ago or never. If none is due, skip this step.
+2. Clone its default branch fresh under `~/.cache/repo-steward/work/` and,
+   from that directory, run the Claude Security plugin's codebase scan at
+   medium effort: `/claude-security scan this codebase at medium scan
+   effort`. Read `CLAUDE-SECURITY-RESULTS.md` when it finishes.
+3. Report each finding privately. Never put a finding in a public issue,
+   comment or PR:
+   - Public repo: open a draft repository security advisory, which only
+     maintainers can see:
+     ```sh
+     gh api -X POST repos/OWNER/REPO/security-advisories \
+       -f summary="..." -f description="..." -f severity=high \
+       -f 'vulnerabilities[][package][ecosystem]=other' \
+       -f 'vulnerabilities[][package][name]=REPO'
+     ```
+     Put the impact, exploit scenario, affected files and recommendation in
+     the description, and end it with your footer.
+   - Private repo: open an issue labelled `bug`, with the same detail.
+4. Record today's date for the repo in the JSON file, and delete the clone.
+
+Advisories wait for confie, so list them in the summary as waiting on confie. Bug
+issues on private repos are trusted and get worked like any other.
+
 ### 7. Summary
 
 Reply with a short list of what you did (with links), what's waiting on
@@ -153,7 +183,8 @@ confie, and anything stuck. Put what needs confie in the first line, since
 that's what the notification shows.
 
 If something new is waiting on confie (an item you labelled
-`needs-approval` this run, or a failure you can't fix) and T3 notifications
+`needs-approval` this run, a new security advisory, or a failure you can't
+fix) and T3 notifications
 are on in the task's settings, unsnooze your thread with `t3_thread_organize`
 (`action: "unsnooze"`) as your last action. The run's completion then
 notifies confie. Otherwise leave the thread snoozed.
