@@ -99,6 +99,11 @@ jobs:
       - uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1.0.290
         id: claude
         if: ${{ steps.scope.outputs.skip != 'true' && steps.reviewed.outputs.done != 'true' }}
+        # The plugin starts its four reviewers as background agents, and the
+        # SDK run can end while they're still going, so nothing is posted.
+        # With background tasks off they run in the foreground and finish.
+        env:
+          CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
@@ -108,7 +113,7 @@ jobs:
           prompt: |
             /code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
 
-            Skip step 1. This workflow has already checked that the pull request is open, isn't a draft and has no comment from Claude, so start at step 2. Every pull request here needs a review, however small, and whether a person or an AI agent wrote it.
+            Skip step 1. This workflow has already checked that the pull request is open, isn't a draft and has no comment from Claude, so start at step 2. Every pull request here needs a review, however small, and whether a person or an AI agent wrote it. Run every agent in the foreground and wait for all of them before you post and finish.
           # Pinned so the disclosure below stays accurate. The plugin runs
           # its own Sonnet and Haiku subagents for parts of the review.
           claude_args: |
