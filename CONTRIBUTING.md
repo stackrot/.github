@@ -17,6 +17,8 @@ change, including the maintainer's own and anything an AI agent writes.
 5. Get the checks green. Every PR runs the repo's CI, a policy check for the
    linked issue and AI disclosure, and an automated Claude code review. Fix
    each review comment or reply to say why not, then resolve the thread.
+   PRs from forks don't get the automated review, so the maintainer reviews
+   them by hand.
 6. Once every required check passes and every thread is resolved, the PR is
    squash-merged and its branch deleted.
 

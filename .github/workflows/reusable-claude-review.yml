@@ -21,7 +21,13 @@ permissions: {}
 
 jobs:
   review:
-    if: ${{ !github.event.pull_request.draft && github.event.pull_request.user.login != 'dependabot[bot]' }}
+    # Bots can't trigger the action, and fork PRs get no secrets, so the
+    # maintainer reviews those by hand.
+    if: >-
+      ${{ !github.event.pull_request.draft
+      && github.event.pull_request.user.login != 'dependabot[bot]'
+      && github.event.pull_request.user.login != 'renovate[bot]'
+      && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     permissions:
@@ -30,7 +36,29 @@ jobs:
       issues: read
       id-token: write
     steps:
+      # The action refuses to run, so that no PR can run an edited copy with
+      # the secret, when a PR changes the calling workflow. Only those PRs
+      # pass without a review.
+      - name: Check whether the PR changes the review workflow
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          caller=${WORKFLOW_REF#"$GITHUB_REPOSITORY/"}
+          caller=${caller%%@*}
+          changed=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" \
+            --paginate --jq '.[].filename' |
+            grep -xF -e "$caller" \
+              -e .github/workflows/reusable-claude-review.yml || true)
+          if [[ -n $changed ]]; then
+            echo "::warning::This PR changes ${changed//$'\n'/, }, so Claude can't review it. Review it with /code-review instead."
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+          fi
+
       - name: Check for the review token
+        if: ${{ steps.scope.outputs.skip != 'true' }}
         env:
           TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
@@ -40,11 +68,13 @@ jobs:
           fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ steps.scope.outputs.skip != 'true' }}
         with:
           fetch-depth: 1
 
       - uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1.0.290
         id: claude
+        if: ${{ steps.scope.outputs.skip != 'true' }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
@@ -52,22 +82,10 @@ jobs:
           prompt: /code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
           claude_args: --allowedTools "mcp__github_inline_comment__create_inline_comment"
 
-      # The action skips Claude, and still passes, when a PR changes the
-      # calling workflow, so that no PR can run an edited copy with the
-      # secret. Only that PR may pass without a review.
+      # The action also returns early and passes when its token exchange is
+      # refused, which would look like a clean review.
       - name: Fail unless the review ran
-        if: ${{ success() && steps.claude.outputs.conclusion != 'success' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
-          WORKFLOW_REF: ${{ github.workflow_ref }}
+        if: ${{ success() && steps.scope.outputs.skip != 'true' && steps.claude.outputs.conclusion != 'success' }}
         run: |
-          workflow=${WORKFLOW_REF#"$GITHUB_REPOSITORY/"}
-          workflow=${workflow%%@*}
-          if gh api "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --paginate \
-              --jq '.[].filename' | grep -qxF "$workflow"; then
-            echo "::warning::This PR changes $workflow, so Claude can't review it. Review it with /code-review instead."
-            exit 0
-          fi
           echo "::error::The Claude review didn't run. See the step above for why."
           exit 1

@@ -30,7 +30,8 @@ jobs:
           body=$(printf '%s' "$BODY" | tr -d '\r' | perl -0pe 's/<!--.*?-->//gs')
           status=0
 
-          issue='\b(close[sd]?|fix(e[sd])?|resolve[sd]?):?[[:space:]]+([[:alnum:]_.-]+/[[:alnum:]_.-]+)?#[0-9]+'
+          repo='[[:alnum:]_.-]+/[[:alnum:]_.-]+'
+          issue="\\b(close[sd]?|fix(e[sd])?|resolve[sd]?):?[[:space:]]+(($repo)?#|https://github\\.com/$repo/issues/)[0-9]+"
           if ! grep -qiE "$issue" <<<"$body"; then
             echo "::error::The description must close an issue, e.g. 'Closes #12'."
             status=1
