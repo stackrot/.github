@@ -43,8 +43,10 @@ agents_own()
 {
 	local path=$1 opener own
 
+	# Anyone can paste the footer, so it counts only on stackrot's threads.
 	opener=$(gh api "$path" --jq "if .user.login == \"dependabot[bot]\"
-		or ((.body // \"\") | contains(\"$footer\"))
+		or (.user.login == \"stackrot\"
+			and ((.body // \"\") | contains(\"$footer\")))
 		then \"agents\" else \"\" end")
 	[[ $opener == agents ]] || return 1
 	own=$(gh api "$path/comments" --paginate --jq \
