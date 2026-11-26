@@ -1,0 +1,18 @@
+name: Notify
+
+# pull_request_target, so the job can comment on PRs from forks. It never
+# checks out the PR's code.
+on:
+  issues:
+    types: [labeled]
+  pull_request_target:
+    types: [labeled]
+
+permissions: {}
+
+jobs:
+  notify:
+    uses: ./.github/workflows/reusable-notify.yml
+    permissions:
+      issues: write
+      pull-requests: write

@@ -17,7 +17,8 @@ repos that don't have their own.
 | `.github/ISSUE_TEMPLATE/` | Bug, feature and chore forms |
 | `.github/workflows/reusable-pr-policy.yml` | Fails a PR that doesn't close an issue or lacks the AI disclosure |
 | `.github/workflows/reusable-claude-review.yml` | Runs the official `code-review` plugin and posts inline findings |
-| `templates/workflows/` | The two caller workflows each repo gets |
+| `.github/workflows/reusable-notify.yml` | Mentions @stackrot as github-actions[bot] when something is labelled `needs-approval` |
+| `templates/workflows/` | The caller workflows each repo gets |
 | `scripts/baseline` | Copies the files in and applies a repo's settings |
 
 ## Setting up a repo
