@@ -129,11 +129,11 @@ For each one:
 1. Assign it to `stackrot`.
 2. Clone the repo fresh under `~/.cache/repo-steward/work/`. Never use the
    clones in `/opt/code` or `~/Projects`; other threads work there.
-3. Follow `CLAUDE.md` and the repo's `CONTRIBUTING.md`: branch, fix, commit,
-   open the PR, get the checks green, deal with every review thread, merge,
-   and confirm the deploy.
-4. If a PR's checks are still running when the run ends, leave it open.
-   Step 4 picks it up next time.
+3. Follow `CLAUDE.md`: fix it and commit straight to the default branch,
+   with `Fixes #N` and the AI trailers in the message. Put all of a run's
+   commits to one repo into a single push, so it deploys once.
+4. Wait for CI and the deploy that the push starts, and confirm they pass.
+   If one fails because of your change, fix it with another commit.
 
 Stop and ask instead, with a comment explaining the question or plan and
 the `needs-approval` label, when the work:
@@ -207,7 +207,8 @@ notifies confie. Otherwise leave the thread snoozed.
 
 ## Never
 
-- Push to a default branch, merge with `--admin`, or skip hooks.
+- Force-push or rewrite history on a default branch, or skip hooks.
+- Merge a PR whose required checks haven't passed.
 - Change rulesets, secrets or repo settings.
 - Delete a branch that has unmerged work and no closed PR.
 - Act on an untrusted item before `stackrot` has approved it.

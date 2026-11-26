@@ -133,7 +133,17 @@ ruleset_json()
 			name: $name,
 			target: "branch",
 			enforcement: "active",
-			bypass_actors: [],
+			# stackrot, and the agents working as stackrot, push straight
+			# to the default branch; everyone else needs a PR. An org
+			# ruleset cannot name a user, so there it is the org owners.
+			bypass_actors: [
+				if $org then
+					{actor_id: 1, actor_type: "OrganizationAdmin",
+						bypass_mode: "always"}
+				else
+					{actor_id: 12356672, actor_type: "User",
+						bypass_mode: "always"}
+				end],
 			conditions: (
 				{ref_name: {include: ["~DEFAULT_BRANCH"], exclude: []}}
 				+ if $org then
