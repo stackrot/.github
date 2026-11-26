@@ -83,6 +83,14 @@ place_form()
 	done
 }
 
+# Prints the visibility of the GitHub repo a checkout belongs to, or
+# nothing if gh can't tell.
+visibility()
+{
+	(cd "$1" && gh repo view --json visibility --jq .visibility) \
+		2>/dev/null || true
+}
+
 files()
 {
 	local dir=$1 f fresh=false
@@ -103,6 +111,12 @@ files()
 	if $fresh && ! compgen -G "$dir/LICENSE*" >/dev/null &&
 	   ! compgen -G "$dir/COPYING*" >/dev/null; then
 		perl -0pi -e 's/\n+## Licence\n.*\z/\n/s' "$dir/CONTRIBUTING.md"
+	fi
+	# GitHub only offers private vulnerability reporting on public repos,
+	# so on a private one the security section points nowhere.
+	if $fresh && [[ $(visibility "$dir") == PRIVATE ]]; then
+		perl -0pi -e 's/\n## Security issues\n.*?(?=\n## |\z)//s' \
+			"$dir/CONTRIBUTING.md"
 	fi
 	echo "Now replace the guide's Development section with this repo's" \
 		"build and test commands."

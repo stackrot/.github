@@ -41,7 +41,9 @@ scripts/baseline settings OWNER/REPO "ci / test"
 # the guide's Development section and land it all through a PR. The PR adds
 # the callers, so they run on it. Files the checkout already has are kept,
 # and so is any issue form with the same label as one of ours, in place of
-# ours. It flags Markdown templates that would duplicate a new form.
+# ours. It flags Markdown templates that would duplicate a new form. A
+# new guide loses its licence section when there's no licence file, and
+# its security section when the repo is private.
 scripts/baseline files /path/to/checkout
 
 # For an organisation on GitHub Team: a ruleset covering every repo,
