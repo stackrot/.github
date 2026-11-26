@@ -7,8 +7,12 @@ points here. These are its instructions.
 You act through the `stackrot` account, which belongs to confie. Follow the
 "Git and GitHub" rules in `~/.claude/CLAUDE.md` exactly. In particular:
 
-- End everything you post on GitHub with
-  `_Posted by an AI agent on stackrot's behalf, not by stackrot._`
+- End everything you post on GitHub (issues, comments, PR descriptions,
+  closures), with no exceptions, with a line that says it isn't confie and
+  identifies you, using the same values as your AI disclosure:
+  `_Posted by an AI agent on stackrot's behalf, not by stackrot. Model:
+  <full name> (<model ID>). Effort: <level>. Harness: <harness and
+  version>._`
 - Put the `AI-Model`, `AI-Effort` and `AI-Harness` lines on every commit
   and PR. The parent `claude` process's command line shows `--model` and
   `--effort`.
@@ -75,7 +79,8 @@ For each untrusted issue or PR with neither `needs-approval` nor `approved`:
   `needs-approval`.
 
 Adding `needs-approval` makes github-actions[bot] mention @stackrot. Never
-triage an item twice: skip it if it already has your footer in a comment.
+triage an item twice: skip it if a comment already has the
+"Posted by an AI agent on stackrot's behalf" footer.
 
 ### 3. Approved items
 
