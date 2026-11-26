@@ -59,7 +59,9 @@ jobs:
 
       # The plugin's own step 1 asks a Haiku agent whether Claude has already
       # commented, and it often counts an agent-written PR's description as
-      # that and stops without posting. Decide it here instead.
+      # that and stops without posting. Decide it here instead. Only the
+      # review's own comments count, as the @claude workflow posts as
+      # claude[bot] too; they all end with the footer the prompt asks for.
       - name: Check whether Claude has already reviewed the PR
         id: reviewed
         if: ${{ steps.scope.outputs.skip != 'true' }}
@@ -70,7 +72,7 @@ jobs:
           count=0
           for kind in issues pulls; do
             n=$(gh api "repos/$GITHUB_REPOSITORY/$kind/$PR/comments" \
-              --paginate --jq '[.[] | select(.user.login == "claude[bot]")] | length' |
+              --paginate --jq '[.[] | select(.user.login == "claude[bot]" and (.body | contains("running the code-review plugin")))] | length' |
               awk '{s += $1} END {print s + 0}')
             count=$((count + n))
           done
@@ -135,7 +137,7 @@ jobs:
           count=0
           for kind in issues pulls; do
             n=$(gh api "repos/$GITHUB_REPOSITORY/$kind/$PR/comments" \
-              --paginate --jq '[.[] | select(.user.login == "claude[bot]")] | length' |
+              --paginate --jq '[.[] | select(.user.login == "claude[bot]" and (.body | contains("running the code-review plugin")))] | length' |
               awk '{s += $1} END {print s + 0}')
             count=$((count + n))
           done
