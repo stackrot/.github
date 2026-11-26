@@ -35,6 +35,54 @@ place()
 	echo "added    $dst"
 }
 
+# Succeeds if issue template FILE applies LABEL. Labels can be an inline
+# list, a block list or, in a Markdown template, a comma-separated string.
+has_label()
+{
+	perl -e '
+		my $label = shift;
+		my $in = 0;
+		while (<>) {
+			if (/^labels:(.*)/) {
+				$in = 1;
+			} elsif (!($in && /^\s+-(.*)/)) {
+				$in = 0;
+				next;
+			}
+			exit 0 if grep { $_ eq $label } split /[\s,\[\]"\x27]+/, $1;
+		}
+		exit 1;
+	' "$2" "$1"
+}
+
+# Copies an issue form into DIR unless DIR already has a form with the same
+# label, which would show as a second form of that type in the issue
+# chooser. An old Markdown template with the label is flagged instead, as
+# the new form usually replaces it.
+place_form()
+{
+	local src=$1 dir=$2 dst=$2/${1##*/} label t
+
+	label=$(sed -n 's/^labels: \[\(.*\)\]$/\1/p' "$src")
+	if [[ -z $label || -e $dst ]]; then
+		place "$src" "$dst"
+		return
+	fi
+	for t in "$dir"/*.yml "$dir"/*.yaml; do
+		if [[ -e $t ]] && has_label "$t" "$label"; then
+			echo "skipped  $dst ($t is already a $label form)"
+			return
+		fi
+	done
+	place "$src" "$dst"
+	for t in "$dir"/*.md; do
+		if [[ -e $t ]] && has_label "$t" "$label"; then
+			echo "check    $t also applies $label; remove it if it" \
+				"duplicates ${src##*/}"
+		fi
+	done
+}
+
 files()
 {
 	local dir=$1 f fresh=false
@@ -44,7 +92,7 @@ files()
 	place "$root/.github/pull_request_template.md" \
 		"$dir/.github/pull_request_template.md"
 	for f in "$root"/.github/ISSUE_TEMPLATE/*.yml; do
-		place "$f" "$dir/.github/ISSUE_TEMPLATE/${f##*/}"
+		place_form "$f" "$dir/.github/ISSUE_TEMPLATE"
 	done
 	for f in "$root"/templates/workflows/*.yml; do
 		place "$f" "$dir/.github/workflows/${f##*/}"
