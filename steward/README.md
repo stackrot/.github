@@ -143,12 +143,24 @@ the `needs-approval` label, when the work:
 - would put a new feature in front of HallowedRS members
 - isn't something you're confident you can fix properly
 
-### 6. Branch clean-up
+### 6. Clean-up
 
 In each repo, delete remote branches other than the default whose PR has
 merged or closed. GitHub keeps them restorable from the PR page. Leave
 branches with an open PR. List branches with no PR at all that are more
 than 14 days old in the summary, but don't delete them.
+
+Then clear the notification noise agents cause. Because agents open issues
+and PRs as stackrot, GitHub notifies confie about every comment and merge
+on them. The sweep unsubscribes stackrot from open threads that agents or
+Dependabot opened, except ones waiting on confie, and marks their
+notifications done. Mentions, such as the approval ping, are kept.
+
+```sh
+gh api repos/stackrot/.github/contents/scripts/quiet \
+  -H 'Accept: application/vnd.github.raw' >~/.cache/repo-steward/quiet
+bash ~/.cache/repo-steward/quiet --sweep
+```
 
 ### 6b. Security scan
 

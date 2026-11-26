@@ -21,6 +21,7 @@ repos that don't have their own.
 | `.github/workflows/reusable-claude.yml` | Runs Claude when someone with write access mentions `@claude` in an issue or PR |
 | `templates/workflows/` | The caller workflows each repo gets |
 | `scripts/baseline` | Copies the files in and applies a repo's settings |
+| `scripts/quiet` | Unsubscribes stackrot from issues and PRs agents open, and clears the notifications they cause |
 | `steward/README.md` | Instructions for the hourly Repo steward task in T3 |
 
 ## Setting up a repo
@@ -59,6 +60,12 @@ scripts/baseline labels OWNER/REPO
 # List active repos missing the guide, a ruleset or the secret.
 scripts/baseline audit
 ```
+
+Agents open issues and PRs as stackrot, so GitHub notifies stackrot about
+every comment and merge on them. After opening one, an agent runs
+`scripts/quiet URL`. The steward runs `scripts/quiet --sweep` hourly to
+catch the rest. An @mention still notifies after unsubscribing, so the
+approval ping gets through.
 
 Only list checks that run on every PR. A required check that a path filter
 skips never reports, and the PR can't merge.

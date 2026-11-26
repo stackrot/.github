@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# Keeps stackrot's GitHub notifications for things that need stackrot.
+#
+# Agents open issues and PRs as stackrot, so GitHub treats stackrot as the
+# author and notifies about every review comment and merge on them. This
+# unsubscribes stackrot from those threads. An @mention still notifies
+# after unsubscribing, so the needs-approval ping keeps working.
+set -euo pipefail
+
+footer="Posted by an AI agent on stackrot's behalf"
+owners=(stackrot HallowedRS)
+
+usage()
+{
+	cat >&2 <<-EOF
+	usage: quiet URL...    unsubscribe stackrot from these issues or PRs
+	       quiet --sweep   unsubscribe from every open issue and PR that
+	                       agents or Dependabot opened, and mark done the
+	                       notifications they caused
+	EOF
+	exit 2
+}
+
+# Unsubscribes from an issue or PR given its API path, such as
+# repos/OWNER/REPO/issues/N.
+unsubscribe()
+{
+	local id
+
+	id=$(gh api "$1" --jq .node_id)
+	gh api graphql --silent -f id="$id" -f query='
+		mutation($id: ID!) {
+			updateSubscription(
+			    input: {subscribableId: $id, state: UNSUBSCRIBED}) {
+				clientMutationId
+			}
+		}'
+}
+
+# True when an agent or Dependabot opened the issue or PR and stackrot
+# hasn't joined in by hand, so nothing on it is stackrot's own conversation.
+agents_own()
+{
+	local path=$1 opener own
+
+	opener=$(gh api "$path" --jq "if .user.login == \"dependabot[bot]\"
+		or ((.body // \"\") | contains(\"$footer\"))
+		then \"agents\" else \"\" end")
+	[[ $opener == agents ]] || return 1
+	own=$(gh api "$path/comments" --paginate --jq \
+		"[.[] | select(.user.login == \"stackrot\"
+			and (.body | contains(\"$footer\") | not))] | length" |
+		awk '{s += $1} END {print s + 0}')
+	((own == 0))
+}
+
+sweep_threads()
+{
+	local owner url path
+
+	for owner in "${owners[@]}"; do
+		# Threads waiting on stackrot stay subscribed, so replies on
+		# them still notify.
+		gh search issues --owner "$owner" --state open \
+			--include-prs --archived=false --limit 500 \
+			--json url,labels --jq '.[]
+				| select([.labels[].name] | index("needs-approval") | not)
+				| .url' |
+		while read -r url; do
+			path=$(api_path "$url")
+			if agents_own "$path"; then
+				unsubscribe "$path"
+				echo "unsubscribed $url"
+			fi
+		done
+	done
+}
+
+# Marks done what agents caused: anything on a thread agents own except a
+# mention, and release notifications, which only watching produces.
+sweep_notifications()
+{
+	local id reason type url path
+
+	gh api 'notifications?per_page=100' --paginate --jq \
+		'.[] | [.id, .reason, .subject.type, (.subject.url // "")] | @tsv' |
+	while IFS=$'\t' read -r id reason type url; do
+		[[ $reason == mention ]] && continue
+		if [[ $type != Release ]]; then
+			[[ $type == Issue || $type == PullRequest ]] || continue
+			path=${url#https://api.github.com/}
+			path=${path/\/pulls\//\/issues\/}
+			agents_own "$path" || continue
+		fi
+		gh api -X DELETE "notifications/threads/$id" --silent
+		echo "done $reason $type ${url##*/repos/}"
+	done
+}
+
+# https://github.com/O/R/pull/N -> repos/O/R/issues/N
+api_path()
+{
+	local rest=${1#https://github.com/}
+
+	rest=${rest/\/pull\//\/issues\/}
+	echo "repos/$rest"
+}
+
+(($#)) || usage
+if [[ $1 == --sweep ]]; then
+	sweep_threads
+	sweep_notifications
+	exit
+fi
+for url in "$@"; do
+	[[ $url == https://github.com/*/*/@(issues|pull)/+([0-9]) ]] || usage
+	unsubscribe "$(api_path "$url")"
+done
