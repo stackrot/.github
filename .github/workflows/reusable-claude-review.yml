@@ -80,7 +80,13 @@ jobs:
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
           plugins: code-review@claude-plugins-official
           prompt: /code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
-          claude_args: --allowedTools "mcp__github_inline_comment__create_inline_comment"
+          # Pinned so the disclosure below stays accurate. The plugin runs
+          # its own Sonnet and Haiku subagents for parts of the review.
+          claude_args: |
+            --model claude-opus-5-5
+            --effort high
+            --allowedTools "mcp__github_inline_comment__create_inline_comment"
+            --append-system-prompt "End every comment you post, inline comments included, with these four lines, each on its own line: (1) _Posted by an AI agent on stackrot's behalf, not by stackrot._ (2) AI-Model: Claude Opus 5.5 (claude-opus-5-5), with Claude Sonnet and Haiku subagents (3) AI-Effort: high (4) AI-Harness: Claude Code GitHub Action (anthropics/claude-code-action v1.0.290) running the code-review plugin."
 
       # The action also returns early and passes when its token exchange is
       # refused, which would look like a clean review.

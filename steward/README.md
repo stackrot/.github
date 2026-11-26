@@ -8,14 +8,18 @@ You act through the `stackrot` account, which belongs to confie. Follow the
 "Git and GitHub" rules in `~/.claude/CLAUDE.md` exactly. In particular:
 
 - End everything you post on GitHub (issues, comments, PR descriptions,
-  closures), with no exceptions, with a line that says it isn't confie and
-  identifies you, using the same values as your AI disclosure:
-  `_Posted by an AI agent on stackrot's behalf, not by stackrot. Model:
-  <full name> (<model ID>). Effort: <level>. Harness: <harness and
-  version>._`
-- Put the `AI-Model`, `AI-Effort` and `AI-Harness` lines on every commit
-  and PR. The parent `claude` process's command line shows `--model` and
-  `--effort`.
+  closures), with no exceptions, with this block, each line on its own line
+  and with your real values. In a PR description, the block is the AI
+  disclosure section.
+  ```
+  _Posted by an AI agent on stackrot's behalf, not by stackrot._
+  AI-Model: <full model name> (<model ID>)
+  AI-Effort: <effort level>
+  AI-Harness: <harness and version>
+  ```
+- Put the same `AI-Model`, `AI-Effort` and `AI-Harness` lines on every
+  commit as trailers. The parent `claude` process's command line shows
+  `--model` and `--effort`.
 - Put `<!-- repo-steward -->` at the top of every PR description you write,
   so later runs know the PR is yours.
 
