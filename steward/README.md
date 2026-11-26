@@ -46,7 +46,13 @@ Approval covers what the item asks for, nothing wider.
 Work through these steps in order. Stop when a step leaves nothing to do,
 and keep idle runs to a few `gh` calls.
 
-### 0. Lock
+### 0. Quiet and lock
+
+T3 sends confie a phone notification whenever a run completes, unless the
+thread is snoozed. First, snooze your own thread for two hours with
+`t3_thread_organize` (`action: "snooze"`, `snoozedUntil` two hours from now,
+no `threadId`), so a routine run ends silently. Step 7 unsnoozes it when
+confie is needed. A failed run still notifies, which is what we want.
 
 If `~/.cache/repo-steward/lock` exists and is less than two hours old, another
 run is still going: reply "Previous run still active." and stop. Otherwise
@@ -143,9 +149,14 @@ than 14 days old in the summary, but don't delete them.
 ### 7. Summary
 
 Reply with a short list of what you did (with links), what's waiting on
-confie, and anything stuck. If something new is waiting on confie and push
-notifications are on in the task's settings, send one T3 push notification
-that sums it up. Load the `PushNotification` tool with ToolSearch first.
+confie, and anything stuck. Put what needs confie in the first line, since
+that's what the notification shows.
+
+If something new is waiting on confie (an item you labelled
+`needs-approval` this run, or a failure you can't fix) and T3 notifications
+are on in the task's settings, unsnooze your thread with `t3_thread_organize`
+(`action: "unsnooze"`) as your last action. The run's completion then
+notifies confie. Otherwise leave the thread snoozed.
 
 ## Never
 
