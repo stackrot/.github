@@ -20,6 +20,7 @@ repos that don't have their own.
 | `.github/workflows/reusable-notify.yml` | Mentions @stackrot as github-actions[bot] when something is labelled `needs-approval` |
 | `templates/workflows/` | The caller workflows each repo gets |
 | `scripts/baseline` | Copies the files in and applies a repo's settings |
+| `steward/README.md` | Instructions for the hourly Repo steward task in T3 |
 
 ## Setting up a repo
 
