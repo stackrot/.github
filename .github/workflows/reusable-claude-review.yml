@@ -2,8 +2,8 @@
 # findings as inline review threads. Each repo calls this from its own
 # claude-review.yml.
 #
-# The plugin reviews a PR once. Later runs see Claude's earlier comment and
-# stop early, so commits pushed after the review aren't reviewed again.
+# Each PR is reviewed once. Later runs find Claude's earlier comment and
+# skip the review, so commits pushed after it aren't reviewed again.
 name: Claude review
 
 on:
@@ -57,8 +57,32 @@ jobs:
             echo "skip=true" >>"$GITHUB_OUTPUT"
           fi
 
-      - name: Check for the review token
+      # The plugin's own step 1 asks a Haiku agent whether Claude has already
+      # commented, and it often counts an agent-written PR's description as
+      # that and stops without posting. Decide it here instead. Only the
+      # review's own comments count, as the @claude workflow posts as
+      # claude[bot] too; they all end with the footer the prompt asks for.
+      - name: Check whether Claude has already reviewed the PR
+        id: reviewed
         if: ${{ steps.scope.outputs.skip != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          count=0
+          for kind in issues pulls; do
+            n=$(gh api "repos/$GITHUB_REPOSITORY/$kind/$PR/comments" \
+              --paginate --jq '[.[] | select(.user.login == "claude[bot]" and (.body | contains("running the code-review plugin")))] | length' |
+              awk '{s += $1} END {print s + 0}')
+            count=$((count + n))
+          done
+          if ((count > 0)); then
+            echo "Claude has already reviewed this PR."
+            echo "done=true" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Check for the review token
+        if: ${{ steps.scope.outputs.skip != 'true' && steps.reviewed.outputs.done != 'true' }}
         env:
           TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
@@ -68,24 +92,23 @@ jobs:
           fi
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: ${{ steps.scope.outputs.skip != 'true' }}
+        if: ${{ steps.scope.outputs.skip != 'true' && steps.reviewed.outputs.done != 'true' }}
         with:
           fetch-depth: 1
 
       - uses: anthropics/claude-code-action@4411a9e9b0283becf4b924f7bce360fd7756c78c # v1.0.290
         id: claude
-        if: ${{ steps.scope.outputs.skip != 'true' }}
+        if: ${{ steps.scope.outputs.skip != 'true' && steps.reviewed.outputs.done != 'true' }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
           plugins: code-review@claude-plugins-official
-          # The plugin's step 1 agent never sees --append-system-prompt, so
-          # the rule that agent-written and small PRs still get a review has
-          # to be in the prompt for the main agent to pass on.
+          # The workflow has already done the plugin's step 1 checks, so the
+          # prompt says to skip it.
           prompt: |
             /code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
 
-            Every pull request here needs a review, however small, and whether a person or an AI agent wrote it. In step 1, stop only if the pull request is closed, is a draft, or already has a comment from Claude. Give the step 1 agent only those three checks, and don't ask it whether the pull request needs a review.
+            Skip step 1. This workflow has already checked that the pull request is open, isn't a draft and has no comment from Claude, so start at step 2. Every pull request here needs a review, however small, and whether a person or an AI agent wrote it.
           # Pinned so the disclosure below stays accurate. The plugin runs
           # its own Sonnet and Haiku subagents for parts of the review.
           claude_args: |
@@ -97,7 +120,7 @@ jobs:
       # The action also returns early and passes when its token exchange is
       # refused, which would look like a clean review.
       - name: Fail unless the review ran
-        if: ${{ success() && steps.scope.outputs.skip != 'true' && steps.claude.outputs.conclusion != 'success' }}
+        if: ${{ success() && steps.scope.outputs.skip != 'true' && steps.reviewed.outputs.done != 'true' && steps.claude.outputs.conclusion != 'success' }}
         run: |
           echo "::error::The Claude review didn't run. See the step above for why."
           exit 1
@@ -114,7 +137,7 @@ jobs:
           count=0
           for kind in issues pulls; do
             n=$(gh api "repos/$GITHUB_REPOSITORY/$kind/$PR/comments" \
-              --paginate --jq '[.[] | select(.user.login == "claude[bot]")] | length' |
+              --paginate --jq '[.[] | select(.user.login == "claude[bot]" and (.body | contains("running the code-review plugin")))] | length' |
               awk '{s += $1} END {print s + 0}')
             count=$((count + n))
           done
