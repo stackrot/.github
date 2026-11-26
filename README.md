@@ -44,6 +44,11 @@ scripts/baseline files /path/to/checkout
 # other PR can merge.
 scripts/baseline org-ruleset HallowedRS
 
+# Just the label set: bug, feature, chore, found-in-passing,
+# needs-approval and approved. Moves enhancement and documentation onto
+# feature and chore, then deletes GitHub's other default labels.
+scripts/baseline labels OWNER/REPO
+
 # List active repos missing the guide, a ruleset or the secret.
 scripts/baseline audit
 ```

@@ -15,6 +15,7 @@ usage()
 	       baseline settings OWNER/REPO [CHECK...]
 	       baseline secret TOKEN_FILE OWNER/REPO...
 	       baseline org-ruleset ORG
+	       baseline labels OWNER/REPO
 	       baseline audit [OWNER...]
 	EOF
 	exit 2
@@ -114,16 +115,38 @@ apply_ruleset()
 
 labels()
 {
-	local repo=$1
+	local repo=$1 pair from n name
 
-	gh label create feature -R "$repo" --force --color 1d76db \
-		--description "New behaviour or capability"
+	# A type, where it came from, and the agent's approval state. Closing as
+	# "not planned" or "duplicate" stands in for wontfix and friends.
 	gh label create bug -R "$repo" --force --color d73a4a \
 		--description "Something isn't working"
+	gh label create feature -R "$repo" --force --color 1d76db \
+		--description "New behaviour or capability"
 	gh label create chore -R "$repo" --force --color c5def5 \
 		--description "Maintenance: dependencies, CI, tooling, docs"
 	gh label create found-in-passing -R "$repo" --force --color fbca04 \
 		--description "Spotted while working on something else"
+	gh label create needs-approval -R "$repo" --force --color d93f0b \
+		--description "An agent is waiting for stackrot's go-ahead"
+	gh label create approved -R "$repo" --force --color 0e8a16 \
+		--description "stackrot has OK'd an agent acting on this"
+
+	# Move GitHub's default labels onto the set, then drop them. Dependabot's
+	# own labels stay, as it recreates them anyway.
+	for pair in enhancement:feature documentation:chore; do
+		from=${pair%%:*}
+		gh api "repos/$repo/issues?labels=$from&state=all&per_page=100" \
+			--paginate --jq '.[].number' |
+		while read -r n; do
+			gh api -X POST "repos/$repo/issues/$n/labels" \
+				-f "labels[]=${pair##*:}" --silent
+		done
+	done
+	for name in enhancement documentation duplicate invalid wontfix \
+	    question "good first issue" "help wanted" accessibility; do
+		gh label delete "$name" -R "$repo" --yes 2>/dev/null || true
+	done
 }
 
 settings()
@@ -142,7 +165,8 @@ settings()
 		-f squash_merge_commit_message=PR_BODY >/dev/null
 	echo "settings $repo: squash only, auto-merge, delete merged branches"
 	labels "$repo" >/dev/null
-	echo "labels   $repo"
+	echo "labels   $repo: bug, feature, chore, found-in-passing," \
+		"needs-approval, approved"
 	if [[ $(gh api "repos/$repo" --jq .visibility) == public ]]; then
 		gh api -X PUT "repos/$repo/private-vulnerability-reporting" \
 			--silent
@@ -213,6 +237,10 @@ secret)
 org-ruleset)
 	(($# == 1)) || usage
 	org_ruleset "$1"
+	;;
+labels)
+	(($# == 1)) || usage
+	labels "$1" >/dev/null
 	;;
 audit)
 	audit "$@"
