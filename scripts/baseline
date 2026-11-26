@@ -1,0 +1,223 @@
+#!/usr/bin/env bash
+# Applies the PR workflow baseline to a repo. See README.md.
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+# Check runs from the two callers in templates/workflows. Every ruleset
+# requires these on top of the repo's own CI.
+base_checks=("policy / check" "review / review")
+
+usage()
+{
+	cat >&2 <<-EOF
+	usage: baseline files DIR
+	       baseline settings OWNER/REPO [CHECK...]
+	       baseline secret TOKEN_FILE OWNER/REPO...
+	       baseline org-ruleset ORG
+	       baseline audit [OWNER...]
+	EOF
+	exit 2
+}
+
+# Copies a file unless the target already has one.
+place()
+{
+	local src=$1 dst=$2
+
+	if [[ -e $dst ]]; then
+		echo "kept     $dst"
+		return
+	fi
+	mkdir -p "$(dirname "$dst")"
+	cp "$src" "$dst"
+	echo "added    $dst"
+}
+
+files()
+{
+	local dir=$1 f fresh=false
+
+	[[ -e $dir/CONTRIBUTING.md ]] || fresh=true
+	place "$root/CONTRIBUTING.md" "$dir/CONTRIBUTING.md"
+	place "$root/.github/pull_request_template.md" \
+		"$dir/.github/pull_request_template.md"
+	for f in "$root"/.github/ISSUE_TEMPLATE/*.yml; do
+		place "$f" "$dir/.github/ISSUE_TEMPLATE/${f##*/}"
+	done
+	for f in "$root"/templates/workflows/*.yml; do
+		place "$f" "$dir/.github/workflows/${f##*/}"
+	done
+	place "$root/templates/dependabot.yml" "$dir/.github/dependabot.yml"
+
+	# Without a licence file, the guide's licence section points nowhere.
+	if $fresh && ! compgen -G "$dir/LICENSE*" >/dev/null &&
+	   ! compgen -G "$dir/COPYING*" >/dev/null; then
+		perl -0pi -e 's/\n+## Licence\n.*\z/\n/s' "$dir/CONTRIBUTING.md"
+	fi
+	echo "Now replace the guide's Development section with this repo's" \
+		"build and test commands."
+}
+
+ruleset_json()
+{
+	local name=$1 org=$2
+
+	shift 2
+	jq -n --arg name "$name" --argjson org "$org" '
+		$ARGS.positional as $checks
+		| {
+			name: $name,
+			target: "branch",
+			enforcement: "active",
+			bypass_actors: [],
+			conditions: (
+				{ref_name: {include: ["~DEFAULT_BRANCH"], exclude: []}}
+				+ if $org then
+					{repository_name: {include: ["~ALL"], exclude: []}}
+				else {} end),
+			rules: [
+				{type: "deletion"},
+				{type: "non_fast_forward"},
+				{type: "required_linear_history"},
+				{type: "pull_request", parameters: {
+					required_approving_review_count: 0,
+					dismiss_stale_reviews_on_push: false,
+					require_code_owner_review: false,
+					require_last_push_approval: false,
+					required_review_thread_resolution: true,
+					allowed_merge_methods: ["squash"]}},
+				{type: "required_status_checks", parameters: {
+					strict_required_status_checks_policy: false,
+					do_not_enforce_on_create: true,
+					required_status_checks:
+						[$checks[] | {context: .}]}}
+			]
+		}' --args "$@"
+}
+
+# Creates the named ruleset at an API base, or replaces it if it exists.
+apply_ruleset()
+{
+	local base=$1 body=$2 name id
+
+	name=$(jq -r .name <<<"$body")
+	id=$(gh api "$base?includes_parents=false" --paginate \
+		--jq ".[] | select(.name == \"$name\") | .id")
+	if [[ -n $id ]]; then
+		gh api -X PUT "$base/$id" --input - <<<"$body" >/dev/null
+	else
+		gh api -X POST "$base" --input - <<<"$body" >/dev/null
+	fi
+	echo "ruleset  $name on $base"
+}
+
+labels()
+{
+	local repo=$1
+
+	gh label create feature -R "$repo" --force --color 1d76db \
+		--description "New behaviour or capability"
+	gh label create bug -R "$repo" --force --color d73a4a \
+		--description "Something isn't working"
+	gh label create chore -R "$repo" --force --color c5def5 \
+		--description "Maintenance: dependencies, CI, tooling, docs"
+	gh label create found-in-passing -R "$repo" --force --color fbca04 \
+		--description "Spotted while working on something else"
+}
+
+settings()
+{
+	local repo=$1
+
+	shift
+	gh api -X PATCH "repos/$repo" \
+		-F allow_squash_merge=true \
+		-F allow_merge_commit=false \
+		-F allow_rebase_merge=false \
+		-F allow_auto_merge=true \
+		-F delete_branch_on_merge=true \
+		-F has_issues=true \
+		-f squash_merge_commit_title=PR_TITLE \
+		-f squash_merge_commit_message=PR_BODY >/dev/null
+	echo "settings $repo: squash only, auto-merge, delete merged branches"
+	labels "$repo" >/dev/null
+	echo "labels   $repo"
+	if [[ $(gh api "repos/$repo" --jq .visibility) == public ]]; then
+		gh api -X PUT "repos/$repo/private-vulnerability-reporting" \
+			--silent
+		echo "enabled  private vulnerability reporting"
+	fi
+	apply_ruleset "repos/$repo/rulesets" \
+		"$(ruleset_json default-branch false "${base_checks[@]}" "$@")"
+}
+
+secret()
+{
+	local file=$1 repo
+
+	shift
+	for repo in "$@"; do
+		gh secret set CLAUDE_CODE_OAUTH_TOKEN -R "$repo" <"$file"
+	done
+}
+
+org_ruleset()
+{
+	apply_ruleset "orgs/$1/rulesets" \
+		"$(ruleset_json org-default-branch true "${base_checks[@]}")"
+}
+
+# Lists active repos that are missing part of the baseline.
+audit()
+{
+	local owner repo missing
+
+	(($#)) || set -- stackrot HallowedRS
+	for owner in "$@"; do
+		gh repo list "$owner" --no-archived --limit 500 \
+			--json nameWithOwner --jq '.[].nameWithOwner' |
+		while read -r repo; do
+			missing=()
+			gh api "repos/$repo/contents/CONTRIBUTING.md" --silent \
+				2>/dev/null || missing+=(CONTRIBUTING.md)
+			gh api "repos/$repo/rulesets" --paginate --jq '.[].name' \
+				2>/dev/null | grep -qxE '(org-)?default-branch' ||
+				missing+=(ruleset)
+			gh secret list -R "$repo" --json name --jq '.[].name' \
+				2>/dev/null | grep -qx CLAUDE_CODE_OAUTH_TOKEN ||
+				missing+=(secret)
+			if ((${#missing[@]})); then
+				echo "$repo: missing ${missing[*]}"
+			fi
+		done
+	done
+}
+
+(($#)) || usage
+cmd=$1
+shift
+case $cmd in
+files)
+	(($# == 1)) || usage
+	files "$1"
+	;;
+settings)
+	(($# >= 1)) || usage
+	settings "$@"
+	;;
+secret)
+	(($# >= 2)) || usage
+	secret "$@"
+	;;
+org-ruleset)
+	(($# == 1)) || usage
+	org_ruleset "$1"
+	;;
+audit)
+	audit "$@"
+	;;
+*)
+	usage
+	;;
+esac
